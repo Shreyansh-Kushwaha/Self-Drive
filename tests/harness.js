@@ -11,10 +11,13 @@ const vm = require("vm");
 
 const PROJECT_DIR = path.join(__dirname, "..");
 
-const GAME_FILES = [
-    "utils.js", "network.js", "visualizer.js", "panels.js", "controls.js", "road.js",
-    "trafficLightSensor.js", "trafficLight.js", "sensor.js", "car.js", "main.js"
+// Same order as index.html. HEADLESS_FILES is everything except the page.
+const HEADLESS_FILES = [
+    "utils.js", "network.js", "controls.js", "road.js", "trafficLightSensor.js",
+    "trafficLight.js", "sensor.js", "car.js", "visualizer.js", "panels.js",
+    "world.js", "ga.js", "evaluate.js"
 ];
+const GAME_FILES = [...HEADLESS_FILES, "main.js"];
 
 function makeContext2d(canvas) {
     return new Proxy({ canvas }, {
@@ -68,6 +71,9 @@ function loadGame({ files = GAME_FILES, seed = 1, overrides = {} } = {}) {
 
     const sandbox = {
         console,
+        setTimeout,
+        clearTimeout,
+        performance,
         Image: class {
             constructor() {
                 this.src = "";
@@ -157,4 +163,4 @@ function createReporter(title) {
     };
 }
 
-module.exports = { loadGame, createReporter, GAME_FILES, PROJECT_DIR };
+module.exports = { loadGame, createReporter, GAME_FILES, HEADLESS_FILES, PROJECT_DIR };

@@ -1,6 +1,11 @@
 # SelfDrivingCar
 
-Created a self-driving car in JavaScript using a neural network trained by a genetic algorithm. No libraries.
+A self-driving car simulation in plain JavaScript (Canvas 2D, no libraries).
+Each car is controlled by a small neural network whose weights are found by a
+**genetic algorithm**. Soft Computing college project.
+
+Full technical documentation, including the measured results and the
+presentation notes, is in [`DOCUMENTATION.md`](DOCUMENTATION.md).
 
 ---
 
@@ -20,57 +25,118 @@ Tests (Node.js required, no dependencies):
 npm test
 ```
 
-The two suites under `tests/` stub out the DOM and the canvas so the real game
-files can run inside Node. `operators.test.js` covers the genetic algorithm
-operators, brain persistence, fitness shaping and traffic-light collision.
-`evolution.test.js` drives the actual animation loop over shortened generations
-and asserts that the population genuinely improves. The harness replaces
-`Math.random` with a seeded generator, so an evolutionary run is reproducible
-rather than flaky.
+The four suites under `tests/` stub out the DOM and the canvas so the real game
+files can run inside Node. `operators.test.js` covers the network, the genetic
+operators, parameter validation, braking, obstacle detection and the traffic
+rules; `panels.test.js` covers the page (breeding panel, metrics, controls,
+configuration, stage selection); `demo.test.js` covers the frozen demo mode,
+evaluation, the three experiments and CSV export; `evolution.test.js` drives
+the real animation loop over shortened generations and asserts that the
+population genuinely improves. The harness replaces `Math.random` with a seeded
+generator, so a run is reproducible rather than flaky.
 
-## 0.1 Genetic Algorithm Implementation
+## 0.1 Using the simulation
 
-> **Note:** this replaces the **manual** workflow described in section 5 below.
-> You no longer have to press "Save Best Brain" to keep a generation —
-> selection and saving are automatic. The buttons still work for saving by hand
-> and for resetting training.
+### Train a champion
 
-Every component of a textbook genetic algorithm is implemented:
+1. Open the page. Training starts on its own: **stage A** (walls of traffic,
+   no lights). Press **×20**.
+2. The curriculum promotes the population automatically when its *measured*
+   behaviour clears the bar (A → B once the champion overtakes ≥ 4 cars and the
+   population averages ≥ 0.5 overtakes for two generations running; B → C once
+   the champion makes ≥ 2 legal stops and clears ≥ 3 lights). The status line
+   and the chart announce each promotion. You can pin a stage in **GA
+   parameters → stage** instead.
+3. The best brain is saved automatically (**Saved brain** panel shows it).
+   A champion from a later stage always replaces one from an earlier stage;
+   within a stage only a higher fitness does. **Save Best Brain** stores the
+   current generation's best by hand; **Discard & Restart** wipes everything
+   and rolls a new track.
+4. Let stage C run for at least 20–30 generations. Watch the **Population
+   metrics** table: the mean and median fitness, the collision rate and the
+   legal-stop rate are the evidence of learning, not the best line alone
+   (elitism makes the best line non-decreasing by construction).
+
+### Demo the champion
+
+Press **Demo Best Brain**. The saved champion is cloned and driven, frozen, on
+the fixed demo route: three walls that force two lane changes, a light that is
+red when the car arrives (6.2 s–22.2 s) and turns green, three more walls, a
+second light, and a finish line at 4200 px. The status panel shows its speed,
+sensor readings, the light state and distance, the action it chose
+(accelerate / brake / steer), overtakes, legal stops, collisions and route
+progress, and a **SUCCESS / FAILURE** verdict at the end. **Reset Demo** restarts
+the identical route from the start line. Evolution is off throughout and the
+panel confirms the genome is unchanged after playback.
+
+If the saved brain fails the route, the demo says so. Go back to **Train
+Population** and keep training; nothing is scripted and nothing is overridden.
+
+### Measure it
+
+**Benchmarks → Run Evaluation** runs, in time slices so the page stays usable:
+
+- **A — GA vs untrained**: 20 random networks, the saved champion plus the five
+  current elites, and a clearly labelled hand-coded rule baseline, all on the
+  training track with the same rules.
+- **B — mutation rates**: 0.05 / 0.10 / 0.20 / 0.30 with everything else held
+  constant, two seeded trials each (population 30, 10 generations of 20 s), so
+  the result is a comparison and not one lucky run.
+- **C — unseen tracks**: the frozen champion on the training track, on five
+  track seeds it never saw, and on the demo route, reported separately.
+
+Results are printed under the network panel and stored. **Export Results
+(CSV)** downloads every stored benchmark row plus the per-generation training
+history (seeds, parameters, best / mean / median fitness, mean distance,
+overtakes, collisions, legal stops, lights, diversity, outcome). Stored results
+are only deleted by **Clear stored results**, which asks first.
+
+### Other controls
+
+| Control | Effect |
+| --- | --- |
+| **Pause / Resume** | Freezes the simulation and the breeding panel |
+| **×1 / ×5 / ×20** | Simulation steps per drawn frame; lights still cycle at the correct simulated rate |
+| **Load Saved Brain** | Restarts training from the saved champion, on its track, in its stage |
+| **GA parameters → Apply** | Population, mutation rate and strength, tournament size, elite count, stage. Values are clamped to valid ranges and the active configuration is shown; changes take effect from the next generation |
+
+## 0.2 Genetic Algorithm Implementation
+
+Every component of a textbook genetic algorithm is implemented (`ga.js`,
+operators in `network.js`, fitness in `car.js`):
 
 | Component | Implementation |
 | --- | --- |
-| **Population** | 100 cars (`POP_SIZE`); each genome is the set of weights and biases of one neural network |
-| **Fitness** | `furthest distance reached − crash penalty (300) + cleared-light bonus (150 per light)` — see `Car.fitness` |
-| **Selection** | Tournament selection, k = 5 (`tournamentSelect`). Tournament was chosen over a roulette wheel because fitness can go negative once the crash penalty applies |
+| **Population** | 100 cars (`POP_SIZE`, configurable); each genome is the 124 weights and biases of one neural network |
+| **Fitness** | `distance + 120 × overtakes + 100 × legal stops + 150 × lights cleared − 100 if crashed − 50 if the crash was running a red light` — see `Car.fitness` |
+| **Selection** | Tournament selection, k = 3 (`Evolution.tournamentSelect`). Tournament was chosen over a roulette wheel because fitness can be negative once the crash penalty applies |
 | **Crossover** | Uniform crossover: every gene is taken from one of the two parents with equal probability (`NeuralNetwork.crossover`) |
-| **Mutation** | Per-gene probabilistic mutation: each gene changes with probability `rate = 0.12`, by magnitude `strength = 0.35` (`NeuralNetwork.mutate`) |
-| **Elitism** | The best 2 brains (`ELITE_COUNT`) are carried into the next generation unmutated, so a generation can never come out strictly worse than its parent |
-| **Stagnation escape** | If the champion's fitness is flat for 6 generations the search is stuck in a local optimum: mutation is boosted ×1.5 and 20% of the children are replaced by random immigrants until it moves again |
-| **Generation loop** | No page reload. A generation ends when every car has crashed, when the leader stops making progress, or when the time limit is reached; the next generation is then built in the same page |
-
-The champion of each generation is written to `localStorage` automatically, so a
-generation is never lost. The generation counter and the all-time best distance
-are persisted too.
+| **Mutation** | Per-gene probabilistic mutation: each gene changes with probability `rate = 0.2`, by up to `strength = 0.5` (`NeuralNetwork.mutate`) |
+| **Elitism** | The best 2 brains (`ELITE_COUNT`) are carried into the next generation unmutated |
+| **Stagnation escape** | If the champion's fitness is flat for 6 generations, mutation is boosted ×1.5 and 20% of the children are replaced by random immigrants until it moves again |
+| **Curriculum** | Stage A (obstacles) → B (lights) → C (both), promoted on measured behaviour |
+| **Generation loop** | No page reload. Each car runs until it crashes, finishes, or is retired for not making progress (less than 1.3 px/frame over 7 s, except while waiting at a red light); the generation ends when every car has stopped or after 60 s |
 
 The course is one **fixed track built from a seed**, and every generation drives
-the identical track. That makes a brain's fitness a pure function of its genome
-rather than of the random layout it happened to meet, so elitism is genuinely
-monotonic and a correct steering decision at a given wall is rewarded every
-time. "Discard & Restart" rolls a new track; "Load Saved Brain" keeps the track
-the brain was bred on. The track (40 walls, 360px apart, mostly blocking one
-lane and sometimes two) is longer than any car can drive in a generation.
+the identical track, so a brain's fitness is a pure function of its genome.
+Every random draw of the GA itself goes through a seeded generator too, so a
+training run is reproducible from `(track seed, GA seed, parameters)`.
 
-### Neural network: 7 inputs, 4 outputs
+### Neural network: 10 inputs, 8 hidden, 4 outputs — 124 genes
 
-Inputs are the 5 sensor ray distances plus the car's **own speed** and a
-**signal for a red or yellow light ahead**. Without those last two inputs the
-network cannot learn to stop at a light, because it has no way of knowing a
-light exists or what colour it is.
+| # | Input | Encoding |
+| --- | --- | --- |
+| 1–5 | `L45 L22 FWD R22 R45` | `1 − offset` of each sensor ray (280 px) |
+| 6 | `SPD` | `speed / maxSpeed`, 0–1 |
+| 7–9 | `RED YEL GRN` | one-hot colour of the nearest light within 260 px; all 0 if none |
+| 10 | `DIST` | `1 − distance / 260` to that light; 0 if none |
 
-The activation function is `tanh(weighted sum + bias)`. In the first version of
-this project the sum was compared directly against the bias to emit 0 or 1,
-which discarded all magnitude information between layers; the diagrams in
-section 4 describe that original version.
+Outputs: `accelerate`, `steer left`, `steer right`, `brake`. **Brake overrides
+accelerate, left and right together cancel, and the car never reverses**: a
+brake command scrubs 0.3 px/frame off the speed down to zero. The interface
+shows the arbitrated action the car actually took.
+
+The activation function is `tanh(weighted sum + bias)`.
 
 ### An accuracy note on "deep learning"
 
@@ -80,7 +146,6 @@ searched by the genetic algorithm above. The phrase "deep learning" in the
 sections below should be read as "an artificial neural network is used".
 
 ---
-
 ## 1. Problem Definition
 
 In this project we built a game that uses an artificial neural network. The
@@ -245,7 +310,7 @@ over from scratch, we press the "Discard Best Brain" button, which deletes the
 ## 5. Experimental Work
 
 > **Note:** this section describes the original manual workflow. Selection and
-> saving are now automatic — see section 0.1.
+> saving are now automatic — see sections 0.1 and 0.2.
 
 First we decided how many cars to use in the genetic algorithm. The higher this
 value the better, but if we make it too large the computer can start to stutter.
@@ -268,7 +333,7 @@ Here we select at a rate of 0.1 on each mutation.
 ### Legacy saved brains (no longer loadable)
 
 The brain data below was recorded with the original 5-input network. The current
-network takes 7 inputs, so these values are **rejected on load** by
+network takes 10 inputs, so these values are **rejected on load** by
 `NeuralNetwork.fromJSON` and the simulation starts from a random population
 instead. They are kept here only as a record of the original results; pasting a
 brain by hand is no longer necessary, because the genetic algorithm now trains

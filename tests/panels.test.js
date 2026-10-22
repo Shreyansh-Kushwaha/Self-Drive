@@ -1,5 +1,7 @@
-// Exercises the new visual code paths, which the normal test suite skips
-// because it breeds instantly (BREEDING_HOLD_FRAMES: 0).
+"use strict";
+
+// Exercises the page's visual code paths and controls, which the evolution
+// test skips because it breeds instantly (BREEDING_HOLD_FRAMES: 0).
 const { loadGame, createReporter } = require("./harness");
 
 const { read, runFrames, store } = loadGame({
@@ -20,31 +22,35 @@ for (let i = 0; i < 2000; i++) {
 report.check("a breeding hold engages when a generation ends", heldAt >= 0, `(frame ${heldAt})`);
 report.check("the hold is the configured length", read("breedingHoldFrames") === read("BREEDING_HOLD_FRAMES"));
 
-const snap = read("JSON.parse(JSON.stringify(breedingSnapshot))");
+const snap = read("JSON.parse(JSON.stringify(evolution.breedingSnapshot))");
 report.check("snapshot ranks the population", Array.isArray(snap.rows) && snap.rows.length === 8);
 report.check("snapshot rows are sorted by fitness descending",
     snap.rows.every((r, i) => i === 0 || snap.rows[i - 1].fitness >= r.fitness));
-report.check("snapshot names the elites", snap.eliteCount === read("ELITE_COUNT"));
+report.check("snapshot rows carry every fitness term",
+    snap.rows.every(r => ["distance", "carsPassed", "legalStops", "lightsCleared", "crashed"].every(k => k in r)));
+report.check("snapshot names the elites", snap.eliteCount === read("evolution.config.eliteCount"));
 report.check("snapshot records real parent pairs",
     snap.pairs.length === 4 && snap.pairs.every(p => p.aRank >= 1 && p.bRank >= 1));
 report.check("snapshot child count matches the population",
-    snap.childCount === read("POP_SIZE") - read("ELITE_COUNT"));
+    snap.childCount === read("evolution.config.popSize") - read("evolution.config.eliteCount"));
+report.check("snapshot reports the gene count and diversity",
+    snap.geneCount === 124 && Number.isFinite(snap.diversity) && Number.isFinite(snap.medianFitness));
 
 report.section("crossover gene trace");
 const genes = read(`({
-    origins: breedingSnapshot.geneTrace.origins.length,
-    mutated: breedingSnapshot.geneTrace.mutated.length,
-    distinct: new Set(breedingSnapshot.geneTrace.origins).size,
-    expected: BRAIN_SHAPE[0]*BRAIN_SHAPE[1] + BRAIN_SHAPE[1] + BRAIN_SHAPE[1]*BRAIN_SHAPE[2] + BRAIN_SHAPE[2],
-    maxIndex: Math.max(...breedingSnapshot.geneTrace.mutated, -1)
+    origins: evolution.breedingSnapshot.geneTrace.origins.length,
+    mutated: evolution.breedingSnapshot.geneTrace.mutated.length,
+    distinct: new Set(evolution.breedingSnapshot.geneTrace.origins).size,
+    expected: NeuralNetwork.geneCount(BRAIN_SHAPE),
+    maxIndex: Math.max(...evolution.breedingSnapshot.geneTrace.mutated, -1)
 })`);
-report.check("one origin recorded per gene in the genome",
-    genes.origins === genes.expected, `(${genes.origins} vs ${genes.expected})`);
+report.check("one origin recorded per gene in the genome (124)",
+    genes.origins === genes.expected && genes.expected === 124, `(${genes.origins} vs ${genes.expected})`);
 report.check("genes come from both parents", genes.distinct === 2);
 report.check("mutated indices stay inside the genome", genes.maxIndex < genes.origins);
 report.check("roughly the configured share of genes mutated",
     genes.mutated > 0 && genes.mutated < genes.origins * 0.6,
-    `(${genes.mutated}/${genes.origins}, rate ${read("MUTATION_RATE")})`);
+    `(${genes.mutated}/${genes.origins}, rate ${read("evolution.config.mutationRate")})`);
 
 report.section("pause freezes the breeding panel");
 read("setPaused(true)");
@@ -55,30 +61,41 @@ report.check("the breeding countdown does not run while paused",
 read("setPaused(false)");
 
 report.section("hold releases into the next generation");
-const genBefore = read("generation");
+const genBefore = read("evolution.generation");
 // The frame that takes the counter to 0 starts the next generation and runs
 // no simulation step, so the cars are untouched at that exact point.
 runFrames(read("breedingHoldFrames"));
 report.check("the hold clears", read("breedingHoldFrames") === 0);
 report.check("a fresh generation is running",
-    read("cars.every(c => !c.damaged && c.maxDistance === 0)"));
-report.check("generation counter already advanced", read("generation") === genBefore);
+    read("evolution.cars.every(c => c.active && c.maxDistance === 0)"));
+report.check("generation counter already advanced", read("evolution.generation") === genBefore);
 
-report.section("fitness history");
+report.section("fitness history and metrics");
 for (let i = 0; i < 4000 && read("fitnessHistory.length") < 4; i++) {
     runFrames(1);
 }
 const history = read("JSON.parse(JSON.stringify(fitnessHistory))");
 report.check("history gains one point per generation", history.length >= 4, `(${history.length})`);
-report.check("history points carry generation, best and mean",
-    history.every(p => Number.isFinite(p.generation) && Number.isFinite(p.best) && Number.isFinite(p.mean)));
+report.check("history points carry generation, stage, best, mean and median",
+    history.every(p => Number.isFinite(p.generation) && typeof p.stage === "string" &&
+        Number.isFinite(p.best) && Number.isFinite(p.mean) && Number.isFinite(p.median)));
+report.check("history points carry the behaviour metrics",
+    history.every(p => Number.isFinite(p.meanDistance) && Number.isFinite(p.meanOvertakes) &&
+        Number.isFinite(p.collisionRate) && Number.isFinite(p.diversity) &&
+        (p.legalStopRate === null || Number.isFinite(p.legalStopRate))));
+report.check("rates with no denominator are null, not fabricated",
+    history.every(p => (p.redEncounters === 0) === (p.legalStopRate === null)));
 report.check("history generations are consecutive",
     history.every((p, i) => i === 0 || p.generation === history[i - 1].generation + 1));
-report.check("history is persisted for reload", store.has("fitnessHistory"));
-report.check("best is never below mean", history.every(p => p.best >= p.mean));
+report.check("best >= median and best >= mean in every generation",
+    history.every(p => p.best >= p.mean && p.best >= p.median));
+report.check("training state is persisted for reload", store.has("trainingState"));
+report.check("the HUD rendered without throwing and shows the generation",
+    /Generation \d+/.test(read("ui.header.textContent")));
+report.check("the metrics table lists best/mean/median and the behaviour rates",
+    /best fitness[\s\S]*median fitness[\s\S]*legal-stop rate[\s\S]*genome diversity/.test(read("ui.metricsBody.textContent")));
 
 report.section("speed and pause");
-// Start from a clean running generation rather than poking internals.
 read("restartTraining(true)");
 read("setSpeed(20)");
 report.check("speed control sets the step multiplier", read("simSpeed") === 20);
@@ -100,12 +117,12 @@ report.check("resume restarts the clock", read("simClockMs") > pausedClock);
 
 report.section("gap shading data");
 report.check("every traffic row records which lanes are open",
-    read(`trackRows.length > 0 && trackRows.every(row =>
+    read(`evolution.world.trackRows.length > 0 && evolution.world.trackRows.every(row =>
         row.freeLanes.length >= 1 && row.freeLanes.length <= 2 &&
         row.cars.length + row.freeLanes.length === 3)`));
 report.check("the recorded open lanes are genuinely empty in that row",
     read(`(() => {
-        for (const row of trackRows) {
+        for (const row of evolution.world.trackRows) {
             for (const lane of row.freeLanes) {
                 const gapX = road.getLaneCenter(lane);
                 if (row.cars.some(c => Math.abs(c.x - gapX) < 1)) return false;
@@ -114,31 +131,47 @@ report.check("the recorded open lanes are genuinely empty in that row",
         return true;
     })()`));
 report.check("the first wall leaves the start lane open",
-    read(`trackRows[0].freeLanes.includes(1)`));
+    read(`evolution.world.trackRows[0].freeLanes.includes(1)`));
 report.check("no two consecutive walls are identical",
-    read(`trackRows.every((row, i) => i === 0 ||
-        row.freeLanes.join() !== trackRows[i - 1].freeLanes.join())`));
+    read(`evolution.world.trackRows.every((row, i) => i === 0 ||
+        row.freeLanes.join() !== evolution.world.trackRows[i - 1].freeLanes.join())`));
 
-report.section("stagnation escape");
-report.check("no immigrants while the champion is still improving",
-    read(`(() => {
-        stagnantGenerations = 0;
-        const next = buildNextPopulation(cars);
-        return next.immigrants === 0 && next.mutationRate === MUTATION_RATE &&
-               next.brains.length === POP_SIZE;
-    })()`));
-report.check("random immigrants and boosted mutation once fitness has been flat",
-    read(`(() => {
-        stagnantGenerations = STAGNATION_LIMIT;
-        const next = buildNextPopulation(cars);
-        stagnantGenerations = 0;
-        return next.immigrants === Math.round(POP_SIZE * STAGNATION_IMMIGRANT_SHARE) &&
-               next.brains.length === POP_SIZE && next.mutationRate > MUTATION_RATE;
-    })()`));
+report.section("configuration panel");
+const applied = read(`applyConfig({ popSize: 12, mutationRate: 0.33, tournamentSize: 4, eliteCount: 1 }, "auto")`);
+report.check("valid parameters are applied", applied.warnings.length === 0 &&
+    applied.config.popSize === 12 && applied.config.mutationRate === 0.33);
+report.check("the active configuration is displayed",
+    /pop 12 .* mutation 0.33/.test(read("ui.configSummary.textContent")));
+const bad = read(`applyConfig({ popSize: 9999, mutationRate: "nope" })`);
+report.check("invalid parameters are corrected and reported",
+    bad.config.popSize === 400 && bad.config.mutationRate === 0.33 && bad.warnings.length === 2 &&
+    /corrections/.test(read("ui.status.textContent")));
+read(`applyConfig({ popSize: 30 })`);
+report.check("a new population size takes effect at the next generation", (() => {
+    read(`applyConfig({ popSize: 14 })`);
+    const gen = read("evolution.generation");
+    for (let i = 0; i < 3000 && read("evolution.generation") === gen; i++) runFrames(1);
+    runFrames(read("breedingHoldFrames") + 1);
+    return read("evolution.cars.length") === 14;
+})(), `(${read("evolution.cars.length")})`);
+read(`applyConfig({ popSize: 30 })`);
+
+report.section("stage selection");
+read(`applyConfig({}, "B")`);
+report.check("pinning stage B rebuilds the world with lights and no traffic at the next generation", (() => {
+    const gen = read("evolution.generation");
+    for (let i = 0; i < 3000 && read("evolution.generation") === gen; i++) runFrames(1);
+    runFrames(read("breedingHoldFrames") + 1);
+    return read("evolution.world.lights.length") > 0 && read("evolution.world.traffic.length") === 0 &&
+        read("curriculum.stage") === "B";
+})());
+report.check("the mode banner and header name the stage",
+    /stage B/.test(read("ui.header.textContent")) && /TRAINING/.test(read("ui.modeBanner.textContent")));
+read(`applyConfig({}, "auto")`);
 
 report.section("crash markers");
 report.check("crashes are recorded once each, with coordinates",
-    read(`crashMarks.length === recordedCrashes.size &&
-          crashMarks.every(m => Number.isFinite(m.x) && Number.isFinite(m.y))`));
+    read(`evolution.crashMarks.length === evolution.recordedCrashes.size &&
+          evolution.crashMarks.every(m => Number.isFinite(m.x) && Number.isFinite(m.y))`));
 
 report.finish();

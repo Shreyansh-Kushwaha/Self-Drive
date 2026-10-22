@@ -8,20 +8,21 @@
 </head>
 <body>
     <div id="parentGameInfo">
+        <div id="modeBanner" class="mode-train">TRAINING</div>
         <div id="parentScoreInfo">
             <div id="gameBestScoreText">All-time Best Distance</div>
             <div id="gameBestScore">0</div>
         </div>
         <div id="gameInfo">
-            <h2 id="gameInfoHeader">About Game</h2>
-            <div id="generationInfo"></div>
-            <div id="gameTime"></div>
-            <div id="carVelocity"></div>
-            <div id="liveCarCount"></div>
-            <div id="bestCarDistance"></div>
-            <div id="carsPassedInfo"></div>
-            <div id="bestFitness"></div>
-            <div id="fitnessBreakdown"></div>
+            <h2 id="gameInfoHeader">Training</h2>
+            <div id="infoLines"></div>
+        </div>
+        <div id="metricsPanel">
+            <div id="metricsTitle">Population metrics</div>
+            <table id="metricsTable">
+                <thead><tr><th>metric</th><th>this gen</th><th>all-time</th></tr></thead>
+                <tbody></tbody>
+            </table>
         </div>
         <canvas id="chartCanvas"></canvas>
     </div>
@@ -29,7 +30,15 @@
     <canvas id="carCanvas"></canvas>
 
     <div id="verticalButtons">
-        <div id="simControls">
+        <div class="group">
+            <div class="groupTitle">Mode</div>
+            <button id="trainButton" type="button">Train Population</button>
+            <button id="demoButton" type="button">Demo Best Brain</button>
+            <button id="resetDemoButton" type="button">Reset Demo</button>
+        </div>
+
+        <div class="group" id="simControls">
+            <div class="groupTitle">Simulation</div>
             <button id="pauseButton" type="button">Pause</button>
             <div id="speedRow">
                 <button class="speedButton" data-speed="1" type="button">&times;1</button>
@@ -37,24 +46,71 @@
                 <button class="speedButton" data-speed="20" type="button">&times;20</button>
             </div>
         </div>
-        <button id="saveButton" type="button">Save Best Brain</button>
-        <button id="loadButton" type="button">Load Saved Brain</button>
-        <button id="discardButton" type="button">Discard &amp; Restart</button>
+
+        <div class="group">
+            <div class="groupTitle">Saved brain</div>
+            <button id="saveButton" type="button">Save Best Brain</button>
+            <button id="loadButton" type="button">Load Saved Brain</button>
+            <button id="discardButton" type="button">Discard &amp; Restart</button>
+        </div>
+
+        <div class="group" id="configGroup">
+            <div class="groupTitle">GA parameters</div>
+            <label>population <input id="cfgPopSize" type="number" min="4" max="400" step="1"></label>
+            <label>mutation rate <input id="cfgMutationRate" type="number" min="0" max="1" step="0.01"></label>
+            <label>mutation strength <input id="cfgMutationStrength" type="number" min="0.01" max="1" step="0.05"></label>
+            <label>tournament size <input id="cfgTournamentSize" type="number" min="1" max="20" step="1"></label>
+            <label>elite count <input id="cfgEliteCount" type="number" min="0" max="20" step="1"></label>
+            <label>stage
+                <select id="cfgStage">
+                    <option value="auto">auto (A → B → C)</option>
+                    <option value="A">A — obstacles only</option>
+                    <option value="B">B — lights only</option>
+                    <option value="C">C — combined</option>
+                </select>
+            </label>
+            <button id="applyConfigButton" type="button">Apply</button>
+            <div id="configSummary" class="small"></div>
+        </div>
+
+        <div class="group">
+            <div class="groupTitle">Benchmarks</div>
+            <label>experiment
+                <select id="experimentSelect">
+                    <option value="A">A — GA vs untrained</option>
+                    <option value="B">B — mutation rates</option>
+                    <option value="C">C — unseen tracks</option>
+                    <option value="all">all three</option>
+                </select>
+            </label>
+            <button id="evaluateButton" type="button">Run Evaluation</button>
+            <button id="exportButton" type="button">Export Results (CSV)</button>
+            <button id="clearResultsButton" type="button">Clear stored results</button>
+            <div id="resultsCount" class="small"></div>
+        </div>
+
+        <div id="statusMessage"></div>
     </div>
 
-    <canvas id="networkCanvas"></canvas>
+    <div id="rightColumn">
+        <canvas id="networkCanvas"></canvas>
+        <pre id="benchmarkResults"></pre>
+    </div>
 
     <!-- Loaded in dependency order: utils first, main last. -->
     <script src="utils.js"></script>
     <script src="network.js"></script>
-    <script src="visualizer.js"></script>
-    <script src="panels.js"></script>
     <script src="controls.js"></script>
     <script src="road.js"></script>
     <script src="trafficLightSensor.js"></script>
     <script src="trafficLight.js"></script>
     <script src="sensor.js"></script>
     <script src="car.js"></script>
+    <script src="visualizer.js"></script>
+    <script src="panels.js"></script>
+    <script src="world.js"></script>
+    <script src="ga.js"></script>
+    <script src="evaluate.js"></script>
     <script src="main.js"></script>
 </body>
 </html>

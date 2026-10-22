@@ -8,8 +8,11 @@ function clamp(value, min = -1, max = 1) {
     return Math.min(max, Math.max(min, value));
 }
 
-function randomGene() {
-    return Math.random() * 2 - 1;
+// Every random draw in the genetic algorithm goes through a `random` function
+// passed in by the caller, so a training run can be reproduced from its seed.
+// Math.random is the default for ordinary use.
+function randomGene(random = Math.random) {
+    return random() * 2 - 1;
 }
 
 // mulberry32: a small seeded generator with the same [0, 1) contract as
@@ -34,6 +37,28 @@ function shuffled(array, random = Math.random) {
         [copy[i], copy[j]] = [copy[j], copy[i]];
     }
     return copy;
+}
+
+function mean(values) {
+    if (values.length === 0) {
+        return 0;
+    }
+    let total = 0;
+    for (const value of values) {
+        total += value;
+    }
+    return total / values.length;
+}
+
+function median(values) {
+    if (values.length === 0) {
+        return 0;
+    }
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 1
+        ? sorted[middle]
+        : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
 function getIntersection(A, B, C, D) {
@@ -85,4 +110,22 @@ function getRGBA(value) {
 function getRandomColor(random = Math.random) {
     const hue = 290 + random() * 260;
     return "hsl(" + hue + ", 100%, 60%)";
+}
+
+// RFC 4180 quoting: a field is wrapped in double quotes when it contains a
+// comma, a quote or a line break, and any quote inside it is doubled.
+function csvEscape(value) {
+    if (value === null || value === undefined) {
+        return "";
+    }
+    const text = String(value);
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, "\"\"")}"` : text;
+}
+
+function toCsv(columns, rows) {
+    const lines = [columns.map(csvEscape).join(",")];
+    for (const row of rows) {
+        lines.push(columns.map(column => csvEscape(row[column])).join(","));
+    }
+    return lines.join("\r\n") + "\r\n";
 }

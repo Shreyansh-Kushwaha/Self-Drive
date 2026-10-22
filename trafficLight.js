@@ -5,6 +5,12 @@ const LIGHT_YELLOW_MS = 2200;
 const LIGHT_RED_MS = 7000;
 const LIGHT_CYCLE_MS = LIGHT_GREEN_MS + LIGHT_YELLOW_MS + LIGHT_RED_MS;
 
+const DEFAULT_LIGHT_DURATIONS = Object.freeze({
+    green: LIGHT_GREEN_MS,
+    yellow: LIGHT_YELLOW_MS,
+    red: LIGHT_RED_MS
+});
+
 class TrafficLight {
     static #nextId = 1;
     static #sprite = null;
@@ -12,13 +18,19 @@ class TrafficLight {
     // Each light carries its own phase, so they no longer all switch together
     // off one global clock, and the yellow phase gives a car long enough to
     // brake instead of being killed the instant the light flips to red.
-    constructor(x, y, width, height, road, phaseOffsetMs = Math.random() * LIGHT_CYCLE_MS) {
+    // `durations` lets a scenario (the demo route) hold a light red for
+    // longer than the training lights do.
+    constructor(x, y, width, height, road,
+        phaseOffsetMs = Math.random() * LIGHT_CYCLE_MS,
+        durations = DEFAULT_LIGHT_DURATIONS) {
         this.id = TrafficLight.#nextId++;
         this.x = x;
         this.y = y;
         this.width = width;
         this.height = height;
         this.phaseOffsetMs = phaseOffsetMs;
+        this.durations = { ...DEFAULT_LIGHT_DURATIONS, ...durations };
+        this.cycleMs = this.durations.green + this.durations.yellow + this.durations.red;
         this.state = "green";
         this.stopLine = new TrafficLightSensor(this, road);
     }
@@ -35,19 +47,28 @@ class TrafficLight {
         return this.state === "red";
     }
 
+    get isGreen() {
+        return this.state === "green";
+    }
+
     get isStopping() {
         return this.state !== "green";
     }
 
-    update(elapsedMs) {
-        const phase = (elapsedMs + this.phaseOffsetMs) % LIGHT_CYCLE_MS;
-        if (phase < LIGHT_GREEN_MS) {
-            this.state = "green";
-        } else if (phase < LIGHT_GREEN_MS + LIGHT_YELLOW_MS) {
-            this.state = "yellow";
-        } else {
-            this.state = "red";
+    // What the light will show `elapsedMs` into a run, without changing it.
+    stateAt(elapsedMs) {
+        const phase = (elapsedMs + this.phaseOffsetMs) % this.cycleMs;
+        if (phase < this.durations.green) {
+            return "green";
         }
+        if (phase < this.durations.green + this.durations.yellow) {
+            return "yellow";
+        }
+        return "red";
+    }
+
+    update(elapsedMs) {
+        this.state = this.stateAt(elapsedMs);
     }
 
     draw(ctx) {

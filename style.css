@@ -4,26 +4,92 @@ body{
     overflow:hidden;
     display:flex;
     justify-content:center;
-    align-items:center;
+    align-items:flex-start;
+    font-family: ui-sans-serif, system-ui, sans-serif;
 }
 
 #verticalButtons{
     display:flex;
     flex-direction:column;
+    width: 190px;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 0 4px;
+    box-sizing: border-box;
+}
+
+#rightColumn{
+    display:flex;
+    flex-direction:column;
+    height: 100vh;
 }
 
 button{
     border: none;
     border-radius: 5px;
     padding: 5px 5px 7px 5px;
-    margin: 2px;
+    margin: 2px 0.6rem;
     cursor:pointer;
-    margin-left: 1rem;
-    margin-right: 1rem;
+    font-size: 0.8rem;
 }
 button:hover{
     background:#3A5BA0;
     color: white;
+}
+button.activeMode{
+    background:#1f7a3a;
+    color: white;
+}
+
+.group{
+    display:flex;
+    flex-direction:column;
+    margin: 6px 0;
+    padding: 4px 0 6px 0;
+    background: rgba(255,255,255,0.25);
+    border-radius: 8px;
+}
+.groupTitle{
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 2px 0.6rem 4px 0.6rem;
+    color: #1d2a44;
+}
+.group label{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size: 0.72rem;
+    margin: 1px 0.6rem;
+}
+.group input, .group select{
+    width: 70px;
+    font-size: 0.72rem;
+    border: 1px solid #999;
+    border-radius: 4px;
+    padding: 1px 3px;
+}
+.group select{
+    width: 112px;
+}
+.small{
+    font-size: 0.66rem;
+    margin: 3px 0.6rem 0 0.6rem;
+    opacity: 0.8;
+    line-height: 1.3;
+}
+
+#statusMessage{
+    font-size: 0.72rem;
+    margin: 6px 0.6rem;
+    padding: 6px;
+    min-height: 2.4em;
+    background: #101828;
+    color: #ffd21f;
+    border-radius: 6px;
+    line-height: 1.3;
 }
 
 #networkCanvas{
@@ -32,33 +98,88 @@ button:hover{
 #carCanvas{
     background:lightgray;
 }
+
+#benchmarkResults{
+    width: 420px;
+    max-height: 100vh;
+    overflow: auto;
+    margin: 0;
+    font-size: 0.68rem;
+    line-height: 1.35;
+    background: #0b1020;
+    color: #d8e0f0;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    white-space: pre-wrap;
+}
+#benchmarkResults:empty{
+    display: none;
+}
+
 #parentGameInfo{
     display: flex;
     flex-direction: column;
     align-items: center;
+    height: 100vh;
+    overflow-y: auto;
+    width: 320px;
 }
+
+#modeBanner{
+    width: 300px;
+    margin: 8px 0 0 0;
+    padding: 6px 0;
+    text-align: center;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    border-radius: 8px;
+    color: white;
+    background: #3A5BA0;
+}
+#modeBanner.mode-train{ background:#3A5BA0; }
+#modeBanner.mode-demo{ background:#1f7a3a; }
+#modeBanner.mode-benchmark{ background:#9a4a00; }
 
 #gameInfo{
     display: flex;
     justify-content: center;
     flex-direction: column;
     width: 300px;
-    min-height: 300px;
-    padding: 1rem 0;
-    margin: 1rem;
+    min-height: 200px;
+    padding: 0.6rem 0;
+    margin: 0.5rem 1rem;
     background-color: aliceblue;
     text-align: center;
     border-radius: 20px;
 }
-
-#gameInfo:hover{
-    background-color:#3A5BA0;
-    color: white;
+#gameInfoHeader{
+    margin: 0.2rem 0 0.5rem 0;
+    font-size: 1.05rem;
+}
+#infoLines div{
+    margin: 0 14px 0.35rem 14px;
+    font-size: 0.82rem;
+}
+#infoLines div.strong{
+    font-weight: 700;
+}
+#infoLines div.muted{
+    font-size: 0.72rem;
+    opacity: 0.7;
+    line-height: 1.3;
+}
+#infoLines div.good{
+    color: #1f7a3a;
+    font-weight: 700;
+}
+#infoLines div.bad{
+    color: #b3261e;
+    font-weight: 700;
 }
 
 #gameBestScore{
-    width: 120px;
-    height: 120px;
+    width: 100px;
+    height: 100px;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -67,15 +188,12 @@ button:hover{
     color: white;
     font-size: large;
     font-weight: 700;
-    font-family: "system-ui";
 }
 
 #gameBestScoreText{
-    color: white;
-    font-size: large;
+    font-size: 0.95rem;
     font-weight: 700;
-    font-family: "system-ui";
-    margin: 1rem;
+    margin: 0.6rem 0 0.4rem 0;
     color: #3A5BA0;
 }
 
@@ -86,43 +204,46 @@ button:hover{
     align-items: center;
 }
 
-#generationInfo,
-#gameTime,
-#carVelocity,
-#liveCarCount,
-#bestCarDistance,
-#carsPassedInfo,
-#bestFitness{
-    margin: 0 20px 0.7rem 20px;
+#metricsPanel{
+    width: 300px;
+    background: #101828;
+    color: white;
+    border-radius: 12px;
+    padding: 6px 0;
+    margin-bottom: 0.5rem;
 }
-
-#generationInfo{
+#metricsTitle{
+    font-size: 0.75rem;
     font-weight: 700;
-    font-size: 1.1rem;
+    margin: 2px 10px 4px 10px;
 }
-
-#bestFitness{
-    font-weight: 700;
-    margin-bottom: 0.2rem;
+#metricsTable{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.68rem;
 }
-
-/* The fitness equation behind the score. */
-#fitnessBreakdown{
-    margin: 0 14px;
-    font-size: 0.72rem;
-    opacity: 0.7;
-    line-height: 1.3;
+#metricsTable th{
+    text-align: right;
+    font-weight: 400;
+    opacity: 0.6;
+    padding: 1px 10px;
+}
+#metricsTable th:first-child{
+    text-align: left;
+}
+#metricsTable td{
+    text-align: right;
+    padding: 1px 10px;
+    font-variant-numeric: tabular-nums;
+}
+#metricsTable td:first-child{
+    text-align: left;
+    opacity: 0.85;
 }
 
 #chartCanvas{
     border-radius: 12px;
     margin-bottom: 1rem;
-}
-
-#simControls{
-    display: flex;
-    flex-direction: column;
-    margin-bottom: 0.8rem;
 }
 
 #speedRow{

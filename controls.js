@@ -1,11 +1,14 @@
 "use strict";
 
+// The four raw commands a driver can issue. `brake` replaces the old
+// `reverse`: the cars never drive backwards any more, a brake command only
+// scrubs speed off towards zero (see Car.#move for the arbitration rules).
 class Controls {
     constructor(type) {
         this.forward = false;
         this.left = false;
         this.right = false;
-        this.reverse = false;
+        this.brake = false;
 
         switch (type) {
             case "KEYS":
@@ -30,7 +33,7 @@ class Controls {
                     this.forward = true;
                     break;
                 case "ArrowDown":
-                    this.reverse = true;
+                    this.brake = true;
                     break;
             }
         });
@@ -46,7 +49,7 @@ class Controls {
                     this.forward = false;
                     break;
                 case "ArrowDown":
-                    this.reverse = false;
+                    this.brake = false;
                     break;
             }
         });

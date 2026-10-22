@@ -2,19 +2,29 @@
 
 class Visualizer {
     // One label per network input, in order: the five sensor rays from left to
-    // right, then the car's own speed, then the red-light signal.
-    static INPUT_LABELS = ["L45", "L22", "FWD", "R22", "R45", "SPD", "RED"];
+    // right, the car's own speed, the nearest light's colour as three one-hot
+    // inputs, and how close that light is.
+    // Read lazily: this file loads before car.js.
+    static get INPUT_LABELS() {
+        return Car.INPUT_LABELS;
+    }
 
-    static drawNetwork(ctx, network) {
+    static get OUTPUT_LABELS() {
+        return Car.OUTPUT_LABELS;
+    }
+
+    // `decision`, when given, is the car's arbitrated action this frame, so
+    // the output nodes can be marked with what the car actually did.
+    static drawNetwork(ctx, network, decision = null, title = "Best car's brain") {
         if (!network || !network.levels.length) {
             return;
         }
 
         const margin = 50;
         const left = margin;
-        const top = margin;
+        const top = margin + 10;
         const width = ctx.canvas.width - margin * 2;
-        const height = ctx.canvas.height - margin * 2;
+        const height = ctx.canvas.height - margin * 2 - 20;
 
         const levelHeight = height / network.levels.length;
 
@@ -32,17 +42,18 @@ class Visualizer {
                 ctx, network.levels[i],
                 left, levelTop,
                 width, levelHeight,
-                i == network.levels.length - 1 ? ["↑", "←", "→", "↓"] : [],
-                i == 0 ? Visualizer.INPUT_LABELS : []
+                i == network.levels.length - 1 ? Visualizer.OUTPUT_LABELS : [],
+                i == 0 ? Visualizer.INPUT_LABELS : [],
+                i == network.levels.length - 1 ? decision : null
             );
         }
 
-        Visualizer.#drawKey(ctx);
+        Visualizer.#drawKey(ctx, title);
     }
 
     // Without this the panel is a pretty picture nobody can read: the input
     // nodes need names and the line colours need explaining.
-    static #drawKey(ctx) {
+    static #drawKey(ctx, title) {
         const width = ctx.canvas.width;
         const height = ctx.canvas.height;
 
@@ -51,13 +62,13 @@ class Visualizer {
         ctx.textBaseline = "top";
         ctx.font = "bold 11px ui-sans-serif, system-ui, sans-serif";
         ctx.fillStyle = "white";
-        ctx.fillText("Best car's brain", 10, 8);
+        ctx.fillText(title, 10, 8);
 
         ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
         ctx.fillStyle = "rgba(255,255,255,0.55)";
-        ctx.fillText("outputs (steering)", 10, 24);
+        ctx.fillText("outputs: accelerate, steer left, steer right, brake (green ring = active)", 10, 24);
         ctx.textAlign = "right";
-        ctx.fillText("inputs (what it senses)", width - 10, height - 42);
+        ctx.fillText("inputs: 5 rays, speed, red / yellow / green light, light distance", width - 10, height - 42);
 
         ctx.textAlign = "left";
         ctx.fillStyle = "#ffd21f";
@@ -68,7 +79,7 @@ class Visualizer {
         ctx.fillText("brightness = strength", 130, height - 15);
     }
 
-    static drawLevel(ctx, level, left, top, width, height, outputLabels, inputLabels) {
+    static drawLevel(ctx, level, left, top, width, height, outputLabels, inputLabels, decision) {
         const right = left + width;
         const bottom = top + height;
 
@@ -91,7 +102,7 @@ class Visualizer {
             }
         }
 
-        const nodeRadius = 18;
+        const nodeRadius = inputs.length > 8 ? 15 : 18;
         for (let i = 0; i < inputs.length; i++) {
             const x = Visualizer.#getNodeX(inputs, i, left, right);
             ctx.beginPath();
@@ -108,40 +119,51 @@ class Visualizer {
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 ctx.fillStyle = "white";
-                ctx.font = "bold 10px ui-sans-serif, system-ui, sans-serif";
+                ctx.font = "bold 9px ui-sans-serif, system-ui, sans-serif";
                 ctx.fillText(inputLabels[i], x, bottom + nodeRadius * 1.5);
             }
         }
 
+        const activeFlags = decision
+            ? [decision.accelerate, decision.left, decision.right, decision.brake]
+            : null;
+
         for (let i = 0; i < outputs.length; i++) {
             const x = Visualizer.#getNodeX(outputs, i, left, right);
             ctx.beginPath();
-            ctx.arc(x, top, nodeRadius, 0, Math.PI * 2);
+            ctx.arc(x, top, 18, 0, Math.PI * 2);
             ctx.fillStyle = "black";
             ctx.fill();
             ctx.beginPath();
-            ctx.arc(x, top, nodeRadius * 0.6, 0, Math.PI * 2);
+            ctx.arc(x, top, 18 * 0.6, 0, Math.PI * 2);
             ctx.fillStyle = getRGBA(outputs[i]);
             ctx.fill();
 
             ctx.beginPath();
             ctx.lineWidth = 2;
-            ctx.arc(x, top, nodeRadius * 0.8, 0, Math.PI * 2);
+            ctx.arc(x, top, 18 * 0.8, 0, Math.PI * 2);
             ctx.strokeStyle = getRGBA(biases[i]);
             ctx.setLineDash([3, 3]);
             ctx.stroke();
             ctx.setLineDash([]);
 
+            // The arbitrated decision: a raw output above zero is a request,
+            // the green ring means the request was acted on.
+            if (activeFlags && activeFlags[i]) {
+                ctx.beginPath();
+                ctx.lineWidth = 3;
+                ctx.arc(x, top, 18 + 4, 0, Math.PI * 2);
+                ctx.strokeStyle = "#8bf59b";
+                ctx.stroke();
+            }
+
             if (outputLabels[i]) {
                 ctx.beginPath();
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.fillStyle = "black";
-                ctx.strokeStyle = "white";
-                ctx.font = (nodeRadius * 1.5) + "px Arial";
-                ctx.fillText(outputLabels[i], x, top + nodeRadius * 0.1);
-                ctx.lineWidth = 0.5;
-                ctx.strokeText(outputLabels[i], x, top + nodeRadius * 0.1);
+                ctx.fillStyle = "white";
+                ctx.font = "bold 10px ui-sans-serif, system-ui, sans-serif";
+                ctx.fillText(outputLabels[i], x, top - 18 - 12);
             }
         }
     }

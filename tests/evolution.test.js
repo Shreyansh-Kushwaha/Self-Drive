@@ -25,18 +25,24 @@ const { read, runFrames, store } = loadGame({
 
 const report = createReporter("evolution test");
 
+// Pinned to stage A: 700-frame generations are too short to reach the first
+// light of stage C, so the lights would only add a hazard the run cannot
+// learn; the stage C track itself is checked separately below.
+read(`applyConfig({}, "A"); restartTraining(false); applyConfig({}, "A");`);
+
 const SAMPLE = `(() => {
-    let best = -Infinity, sum = 0, alive = 0, cleared = 0, distance = 0;
-    for (const car of cars) {
+    let best = -Infinity, sum = 0, alive = 0, cleared = 0, distance = 0, passed = 0;
+    for (const car of evolution.cars) {
         if (car.fitness > best) best = car.fitness;
         if (car.maxDistance > distance) distance = car.maxDistance;
         if (car.lightsCleared > cleared) cleared = car.lightsCleared;
+        if (car.carsPassed > passed) passed = car.carsPassed;
         if (!car.damaged) alive++;
         sum += car.fitness;
     }
     return {
-        best, mean: sum / cars.length, alive, distance,
-        lightsCleared: cleared, traffic: traffic.length, lightCount: lights.length
+        best, mean: sum / evolution.cars.length, alive, distance, passed,
+        lightsCleared: cleared, traffic: evolution.world.traffic.length, lightCount: evolution.world.lights.length
     };
 })()`;
 
@@ -44,7 +50,7 @@ const history = [];
 // World snapshot at the same frame of each generation. On a fixed track these
 // must be identical, otherwise fitness is partly luck.
 const layouts = {};
-let previousGeneration = read("generation");
+let previousGeneration = read("evolution.generation");
 let sample = null;
 let nonFiniteAt = -1;
 let loopDied = false;
@@ -56,6 +62,7 @@ let trafficScans = 0;
 let overlapFrames = 0;
 let fullWallFrames = 0;
 const TRAFFIC_SCAN = `(() => {
+    const traffic = evolution.world.traffic, lights = evolution.world.lights;
     let overlap = false, fullWall = false;
     for (let i = 0; i < traffic.length && !overlap; i++) {
         for (let j = i + 1; j < traffic.length; j++) {
@@ -84,25 +91,25 @@ try {
             if (scan.overlap) overlapFrames++;
             if (scan.fullWall) fullWallFrames++;
         }
-        const generation = read("generation");
+        const generation = read("evolution.generation");
         if (generation !== previousGeneration) {
             history.push({ generation: previousGeneration, ...sample });
             previousGeneration = generation;
         }
-        if (read("frameInGeneration") === 150) {
+        if (read("evolution.frameInGeneration") === 150) {
             layouts[generation] = read(`
-                traffic.map(d => Math.round(d.y) + ":" + Math.round(d.x)).join("|") +
-                "/" + lights.map(l => Math.round(l.y) + ":" + l.state).join("|")`);
+                evolution.world.traffic.map(d => Math.round(d.y) + ":" + Math.round(d.x)).join("|") +
+                "/" + evolution.world.lights.map(l => Math.round(l.y) + ":" + l.state).join("|")`);
         }
         sample = read(SAMPLE);
-        const state = read("[bestCar.x, bestCar.y, bestCar.speed, bestCar.fitness, bestCar.lightSignal]");
+        const state = read("[evolution.bestCar.x, evolution.bestCar.y, evolution.bestCar.speed, evolution.bestCar.fitness, evolution.bestCar.lightSignal]");
         if (nonFiniteAt < 0 && state.some((value) => !Number.isFinite(value))) {
             nonFiniteAt = generation;
         }
     });
 } catch (error) {
     loopDied = true;
-    console.log(`  loop error: ${error.message}`);
+    console.log(`  loop error: ${error.message}\n${error.stack}`);
 }
 
 report.section("stability");
@@ -114,14 +121,19 @@ report.check("every generation drives the same fixed track",
     history.length > 0 && history[0].traffic > 0 &&
     history.every((h) => h.traffic === history[0].traffic),
     `(traffic counts ${[...new Set(history.map((h) => h.traffic))].join(", ")})`);
-report.check("the track has traffic lights on it",
-    history.every((h) => h.lightCount > 0));
+report.check("stage A has no lights; stages B and C put lights on the same seed's track",
+    history.every((h) => h.lightCount === 0) &&
+    read("buildTrack(trackSeed, SCENARIOS.B).lights.length") > 0 &&
+    read("buildTrack(trackSeed, SCENARIOS.C).lights.length") > 0 &&
+    read("buildTrack(trackSeed, SCENARIOS.C).rows.length") > 0);
 report.check("traffic cars never overlap each other",
     trafficScans > 0 && overlapFrames === 0,
     `(${overlapFrames} of ${trafficScans} sampled frames)`);
 report.check("no wall on open road ever blocks all three lanes",
     trafficScans > 0 && fullWallFrames === 0,
     `(${fullWallFrames} of ${trafficScans} sampled frames)`);
+report.check("every fitness in the history is finite",
+    history.every(h => Number.isFinite(h.best) && Number.isFinite(h.mean)));
 
 const layoutGens = Object.keys(layouts).map(Number).sort((a, b) => a - b);
 report.check("the world is identical at the same frame of every generation",
@@ -130,23 +142,33 @@ report.check("the world is identical at the same frame of every generation",
     `(compared generations ${layoutGens.join(", ")})`);
 
 report.section("persistence");
-report.check("the champion brain is autosaved every generation", store.has("bestBrain"));
-report.check("the generation counter is persisted", Number(store.get("generation")) === read("generation"));
-report.check("a saved brain reloads into a usable network", read(`(() => {
-    const revived = NeuralNetwork.fromJSON(JSON.parse(localStorage.getItem("bestBrain")), BRAIN_SHAPE);
+report.check("the champion brain is autosaved", store.has("champion"));
+report.check("the saved champion records its format, stage, track seed and generation", (() => {
+    const record = JSON.parse(store.get("champion"));
+    return record.format === read("BRAIN_FORMAT") && record.stage === "A" &&
+        record.trackSeed === read("trackSeed") && Number.isFinite(record.generation) &&
+        Number.isFinite(record.fitness) && record.brain && record.brain.neuronCounts.join() === "10,8,4";
+})());
+report.check("the training state is persisted with the generation counter",
+    JSON.parse(store.get("trainingState")).generation === read("evolution.generation"));
+report.check("the saved brain reloads into a usable network", read(`(() => {
+    const revived = loadChampionRecord().brain;
     if (!revived) return false;
     const outputs = NeuralNetwork.feedForward(new Array(BRAIN_SHAPE[0]).fill(0.4), revived);
     return outputs.length === 4 && outputs.every(Number.isFinite);
 })()`));
-
-report.check("the saved brain is tagged with the sensor format it was bred on",
-    store.get("bestBrainFormat") === read("BRAIN_FORMAT"));
-report.check("a brain saved under a different sensor format is refused on load", read(`(() => {
-    const original = localStorage.getItem("bestBrainFormat");
-    localStorage.setItem("bestBrainFormat", "7x8x4/rays150/light260");
-    const refused = loadSavedBrain() === null;
-    localStorage.setItem("bestBrainFormat", original);
-    return refused && loadSavedBrain() !== null;
+report.check("a brain saved under a different format is refused with a clear message", read(`(() => {
+    const original = localStorage.getItem("champion");
+    const record = JSON.parse(original);
+    record.format = "7x8x4/rays150/light260";
+    localStorage.setItem("champion", JSON.stringify(record));
+    const refused = loadChampionRecord();
+    localStorage.setItem("champion", original);
+    return refused.brain === null && /older network/.test(refused.message) && loadChampionRecord().brain !== null;
+})()`));
+report.check("the champion is never replaced by a worse brain of the same stage", read(`(() => {
+    const fitnesses = fitnessHistory.map(p => p.best);
+    return JSON.parse(localStorage.getItem("champion")).fitness >= Math.max(...fitnesses) - 1;
 })()`));
 
 report.section("evolution");
@@ -163,6 +185,14 @@ report.check("mean population fitness improves over the run", meanEnd > meanStar
     `(${meanStart.toFixed(1)} -> ${meanEnd.toFixed(1)})`);
 report.check("the improvement is substantial, not noise", meanEnd > meanStart * 1.5 + 50,
     `(${meanStart.toFixed(1)} -> ${meanEnd.toFixed(1)})`);
+// Checked on the page's own end-of-generation summaries: the per-frame samples
+// above are taken one frame before the generation-ending step, so they can be
+// a pixel or two short.
+const recordedBests = read("fitnessHistory.map(p => p.best)");
+report.check("champion fitness never decreases (elitism on a fixed track)",
+    recordedBests.length >= GENERATIONS_WANTED - 2 &&
+    recordedBests.every((best, i) => i === 0 || best >= recordedBests[i - 1]),
+    `(${recordedBests.join(" ")})`);
 report.check("champion fitness does not collapse (elitism holds)", bestEnd >= bestStart * 0.8,
     `(${bestStart.toFixed(1)} -> ${bestEnd.toFixed(1)})`);
 
@@ -172,6 +202,7 @@ for (const h of history) {
         `  best ${h.best.toFixed(0).padStart(7)}` +
         `  mean ${h.mean.toFixed(0).padStart(7)}` +
         `  survivors ${String(h.alive).padStart(3)}` +
+        `  passed ${h.passed}` +
         `  lights cleared ${h.lightsCleared}` +
         `  traffic ${h.traffic}`);
 }
