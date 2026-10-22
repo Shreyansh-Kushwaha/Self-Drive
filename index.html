@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Self-driving car - genetic algorithm, no libraries</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="parentGameInfo">
+        <div id="parentScoreInfo">
+            <div id="gameBestScoreText">All-time Best Distance</div>
+            <div id="gameBestScore">0</div>
+        </div>
+        <div id="gameInfo">
+            <h2 id="gameInfoHeader">About Game</h2>
+            <div id="generationInfo"></div>
+            <div id="gameTime"></div>
+            <div id="carVelocity"></div>
+            <div id="liveCarCount"></div>
+            <div id="bestCarDistance"></div>
+            <div id="carsPassedInfo"></div>
+            <div id="bestFitness"></div>
+            <div id="fitnessBreakdown"></div>
+        </div>
+        <canvas id="chartCanvas"></canvas>
+    </div>
+
+    <canvas id="carCanvas"></canvas>
+
+    <div id="verticalButtons">
+        <div id="simControls">
+            <button id="pauseButton" type="button">Pause</button>
+            <div id="speedRow">
+                <button class="speedButton" data-speed="1" type="button">&times;1</button>
+                <button class="speedButton" data-speed="5" type="button">&times;5</button>
+                <button class="speedButton" data-speed="20" type="button">&times;20</button>
+            </div>
+        </div>
+        <button id="saveButton" type="button">Save Best Brain</button>
+        <button id="loadButton" type="button">Load Saved Brain</button>
+        <button id="discardButton" type="button">Discard &amp; Restart</button>
+    </div>
+
+    <canvas id="networkCanvas"></canvas>
+
+    <!-- Loaded in dependency order: utils first, main last. -->
+    <script src="utils.js"></script>
+    <script src="network.js"></script>
+    <script src="visualizer.js"></script>
+    <script src="panels.js"></script>
+    <script src="controls.js"></script>
+    <script src="road.js"></script>
+    <script src="trafficLightSensor.js"></script>
+    <script src="trafficLight.js"></script>
+    <script src="sensor.js"></script>
+    <script src="car.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "self-driving-car",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Self-driving car simulation trained by a genetic algorithm, no libraries",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node tests/operators.test.js && node tests/panels.test.js && node tests/evolution.test.js"
+  }
+}
